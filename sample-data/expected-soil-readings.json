@@ -1,0 +1,44 @@
+﻿[
+    {
+        "reference":  "Not provided",
+        "unit":  "pH",
+        "interpretation":  "Not rated",
+        "value":  "7.6",
+        "parameter":  "pH"
+    },
+    {
+        "reference":  "Not provided",
+        "unit":  "mg/kg",
+        "interpretation":  "Low",
+        "value":  "8",
+        "parameter":  "Nitrate-N"
+    },
+    {
+        "reference":  "Not provided",
+        "unit":  "mg/kg",
+        "interpretation":  "Medium",
+        "value":  "12",
+        "parameter":  "Available phosphorus"
+    },
+    {
+        "reference":  "Not provided",
+        "unit":  "mg/kg",
+        "interpretation":  "Adequate",
+        "value":  "180",
+        "parameter":  "Exchangeable potassium"
+    },
+    {
+        "reference":  "Not provided",
+        "unit":  "%",
+        "interpretation":  "Low",
+        "value":  "1.2",
+        "parameter":  "Organic matter"
+    },
+    {
+        "reference":  "Not provided",
+        "unit":  "dS/m",
+        "interpretation":  "Not rated",
+        "value":  "0.7",
+        "parameter":  "Electrical conductivity"
+    }
+]

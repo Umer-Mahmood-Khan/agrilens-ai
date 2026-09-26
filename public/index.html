@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgriLens AI · Farm Intelligence</title>
+  <meta name="description" content="Turn crop photos and soil reports into an evidence-backed farm action plan.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/refinement.css">
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <a href="#main" class="skip">Skip to workspace</a>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="AgriLens home"><img src="/favicon.svg" alt="" width="36" height="36"><span>AgriLens<span class="brand-ai"> AI</span><small>FARM INTELLIGENCE</small></span></a>
+    <div class="workspace-label">YOUR WORKSPACE</div>
+    <nav aria-label="Main navigation">
+      <a href="#main" class="nav-link active"><span aria-hidden="true">▦</span> Farm workspace <span class="nav-dot"></span></a>
+      <a href="#evidence-library" class="nav-link"><span aria-hidden="true">▤</span> Knowledge library</a>
+      <a href="#how-it-works" class="nav-link"><span aria-hidden="true">◎</span> How it works</a>
+    </nav>
+    <div class="sidebar-note"><div class="little-leaf" aria-hidden="true">↗</div><strong>Better context.<br>Better decisions.</strong><p>Bring your field observations and soil evidence together.</p><span class="small-tag">WHEAT WORKSPACE</span></div>
+    <div class="sidebar-bottom"><span class="avatar">AF</span><div>Your farm workspace<small>Local session</small></div></div>
+  </aside>
+  <div class="shell">
+    <header class="topbar"><div>Workspace <span>/</span> <strong>Farm intelligence</strong></div><span class="connection" id="connection"><i></i> Checking connection</span></header>
+    <main id="main">
+      <div class="heading-row"><div><div class="eyebrow">EVIDENCE IN. CLEAR ACTIONS OUT.</div><h1>Know your next move.</h1><p class="subtitle">A focused recommendation workspace for wheat.</p></div><button class="button secondary" id="sample-top">Explore a sample <span aria-hidden="true">↗</span></button></div>
+      <section class="hero" aria-label="Farm intelligence overview">
+        <div class="hero-copy"><span class="hero-tag"><i></i> FROM EVIDENCE TO ACTION</span><h2>Less guesswork.<br>More grounded decisions.</h2><p>One crop photo. One soil report. Three practical next steps.</p><div class="hero-features"><span>◉ Photo analysis</span><span>▤ Soil insights</span><span>↗ Action planning</span></div></div>
+        <div class="field-art" aria-hidden="true"><svg viewBox="0 0 440 300" fill="none"><defs><linearGradient id="leaf" x1="180" y1="60" x2="240" y2="260" gradientUnits="userSpaceOnUse"><stop stop-color="#ccdda8"/><stop offset="1" stop-color="#749965"/></linearGradient></defs><circle cx="259" cy="136" r="102" stroke="#b4ca91" stroke-opacity=".16"/><circle cx="259" cy="136" r="77" stroke="#b4ca91" stroke-opacity=".12"/><path d="M0 282C120 209 304 188 440 240M0 305C145 227 300 223 440 269M40 318C177 259 314 251 440 298" stroke="#72935e" stroke-opacity=".4"/><path d="M245 274C244 224 250 126 272 41" stroke="#c6d99f" stroke-width="3"/><path d="M252 208C200 196 184 149 187 104C236 120 257 162 252 208Z" fill="url(#leaf)"/><path d="M252 178C252 111 296 73 341 64C331 119 310 160 252 178Z" fill="url(#leaf)"/><path d="M252 239C213 233 184 217 165 184C211 180 244 203 252 239Z" fill="#7b9c69"/><path d="M250 222C271 177 306 173 343 181C323 215 290 233 250 222Z" fill="#9fb986"/><path d="m253 173 68-92m-70 121-55-76m55 95 71-31" stroke="#315e40" stroke-opacity=".4" stroke-width="1.5"/><path d="M158 70h-17v18m211 39v18h-17M158 145h-17v-18m211-39V70h-17" stroke="#d5e5b3" stroke-opacity=".6"/><circle cx="273" cy="42" r="4" fill="#d5e5b3"/></svg><div class="art-label"><span class="pulse-dot"></span> OBSERVE / VERIFY / ACT</div></div>
+      </section>
+      <div class="workflow-strip" aria-label="Workflow"><span class="current"><b>01</b> Add evidence</span><i></i><span id="strip-review"><b>02</b> Review findings</span><i></i><span id="strip-plan"><b>03</b> Your action plan</span></div>
+      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      <section id="partial-findings" class="card" hidden aria-live="polite"><span class="section-number">PHOTO OBSERVATIONS SAVED</span><h3 id="partial-summary"></h3><div id="partial-observations" class="muted"></div><p class="muted">The report is still being processed. If interrupted, use Resume analysis to keep these observations.</p></section>
+      <section id="setup-banner" class="setup-banner" hidden><span><strong>Your workspace is ready.</strong> Try a sample now, or connect your API key for your own files.</span><button id="setup-button" class="text-button">Connection guide ↗</button></section>
+      <div class="workspace-grid">
+        <section class="card input-card" id="input-section">
+          <div class="section-heading"><div><span class="section-number">01 / INPUT</span><h2>Start with your field</h2></div><span class="pill">Wheat</span></div>
+          <div class="mode-switch" role="group" aria-label="Analysis mode"><button id="live-mode" aria-pressed="true" class="selected">My field</button><button id="sample-mode" aria-pressed="false">Sample walkthrough</button></div>
+          <div id="sample-notice" class="sample-notice" hidden>Illustrative wheat scenario. Findings are predefined; no AI analysis or upload is performed.</div>
+          <form id="farm-form">
+            <fieldset id="field-inputs"><legend class="sr-only">Field context and uploads</legend>
+              <div class="form-grid"><label>Crop<select id="crop"><option>Wheat</option></select></label><label>Growth stage<select id="stage"><option value="Unknown">Not sure yet</option><option>Seedling</option><option>Tillering</option><option>Stem elongation</option><option>Heading</option><option>Grain filling</option></select></label></div>
+              <label>Field location <span class="optional">optional</span><input id="location" placeholder="e.g. Faisalabad, Punjab" maxlength="150" autocomplete="off"></label>
+              <div class="upload-grid">
+                <label class="upload-zone" id="photo-zone" for="photo"><span class="upload-icon" aria-hidden="true">⌁</span><strong>Crop photo <span class="required">*</span></strong><span class="upload-description" id="photo-name">Choose or drop a leaf photo</span><span class="upload-meta">JPG, PNG, WebP · up to 8 MB</span><input id="photo" type="file" accept="image/jpeg,image/png,image/webp"><img id="photo-preview" alt="Preview of your crop upload" hidden></label>
+                <label class="upload-zone" id="report-zone" for="report"><span class="upload-icon" aria-hidden="true">▤</span><strong>Soil report <span class="optional">optional</span></strong><span class="upload-description" id="report-name">Choose or drop your report</span><span class="upload-meta">PDF or image · up to 8 MB</span><input id="report" type="file" accept="application/pdf,image/jpeg,image/png,image/webp"></label>
+              </div>
+              <div class="file-actions"><button type="button" id="clear-photo" class="text-button" hidden>Remove photo</button><button type="button" id="clear-report" class="text-button" hidden>Remove report</button></div>
+              <label>What have you noticed? <span class="optional">optional</span><textarea id="notes" rows="2" maxlength="2000" placeholder="Tell us about symptoms, recent rain, or changes in the field…"></textarea></label>
+            </fieldset>
+            <button type="submit" class="button primary full" id="analyze-button">Analyze my field <span aria-hidden="true">↗</span></button>
+            <p class="privacy-note" id="privacy-note">Live analysis sends your files to your configured AI provider. Uploads are not saved to disk.</p>
+          </form>
+        </section>
+        <aside class="card pipeline-card" aria-label="Analysis progress">
+          <div class="section-heading"><div><span class="section-number">YOUR COPILOT</span><h2>From field to next step</h2></div><span class="status-indicator" id="overall-status">Ready</span></div>
+          <p class="muted">Your evidence, checked step by step.</p>
+          <ol class="stages" id="stages">
+            <li data-stage="vision"><span class="stage-icon">◎</span><div><strong>Vision analysis</strong><small>Look closely at visible symptoms</small><span class="stage-state">Waiting</span></div><span class="stage-mark">○</span></li>
+            <li data-stage="soil"><span class="stage-icon">▤</span><div><strong>Soil extraction</strong><small>Read the report, preserve the details</small><span class="stage-state">Waiting</span></div><span class="stage-mark">○</span></li>
+            <li data-stage="knowledge"><span class="stage-icon">▧</span><div><strong>Reference matching</strong><small>Match the recommendation rules</small><span class="stage-state">Waiting</span></div><span class="stage-mark">○</span></li>
+            <li data-stage="recommendation"><span class="stage-icon">↗</span><div><strong>Action planning</strong><small>Select three practical actions</small><span class="stage-state">Waiting</span></div><span class="stage-mark">○</span></li>
+            <li data-stage="review"><span class="stage-icon">✓</span><div><strong>Evidence review</strong><small>Check sources and missing evidence</small><span class="stage-state">Waiting</span></div><span class="stage-mark">○</span></li>
+          </ol>
+          <div class="pipeline-footer"><span aria-hidden="true">◈</span><p>Clear actions.<br><strong>Evidence you can inspect.</strong></p></div>
+          <button class="text-button" id="cancel-button" hidden>Cancel current analysis</button>
+          <p class="sr-only" id="progress-announcement" role="status" aria-live="polite"></p>
+        </aside>
+      </div>
+      <section class="card findings" id="findings" hidden>
+        <div class="section-heading"><div><span class="section-number">02 / REVIEW</span><h2>Check what we read</h2></div><span class="pill sample-badge" hidden>Sample findings</span></div>
+        <div id="vision-findings"></div>
+        <div class="soil-heading"><div><h3>Confirm your soil readings</h3><p class="muted">Correct anything that was misread. Keep the report's units and interpretation.</p></div><button id="add-reading" class="button secondary small">+ Add reading</button></div>
+        <p id="soil-summary" class="muted"></p><div class="table-scroll"><table><caption class="sr-only">Editable soil readings</caption><thead><tr><th>Parameter</th><th>Value</th><th>Unit</th><th>Reference range</th><th>Report interpretation</th><th><span class="sr-only">Remove</span></th></tr></thead><tbody id="soil-readings"></tbody></table></div>
+        <div id="soil-warnings" class="note-list"></div>
+        <div class="review-bottom"><label class="checkbox"><input type="checkbox" id="confirm-readings">I've reviewed these readings, including any missing values.</label><button id="plan-button" class="button primary" disabled>Create action plan <span aria-hidden="true">↗</span></button></div>
+      </section>
+      <section id="results" class="results" hidden>
+        <div class="heading-row"><div><div class="eyebrow">03 / YOUR NEXT STEPS</div><h2 class="result-title">Your field brief.</h2></div><div class="download-actions"><button id="download-md" class="button secondary small">↓ Download report</button><button id="download-json" class="button secondary small">JSON</button></div></div>
+        <div id="result-content"></div>
+      </section>
+      <details class="card library" id="evidence-library"><summary class="section-heading"><div><span class="section-number">BUILT ON REFERENCES</span><h2>Open the reference library</h2></div><span class="pill" id="library-count">Loading references</span></summary><p class="muted">FAO, university extension, ISRIC and Punjab sources. Each card states its geographic scope.</p><div class="library-grid" id="library-content"></div></details>
+      <section id="how-it-works" class="how-it-works"><div><span class="section-number">HOW IT WORKS</span><h2>You bring the context.<br>Your copilot connects it.</h2></div><div><h3>01 · Observe</h3><p>A photo helps describe symptoms. A soil report adds measurements, units and lab context.</p></div><div><h3>02 · Understand</h3><p>You review the readings. Fixed rules match confirmed evidence to practical next steps.</p></div><div><h3>03 · Decide</h3><p>Review the short brief and bring any missing measurements to your local adviser.</p></div></section>
+      <footer>AgriLens AI <span>Made for informed next steps.</span><span>Decision support · Field verification matters</span></footer>
+    </main>
+  </div>
+  <dialog id="setup-dialog"><div class="dialog-heading"><h2>Connect live analysis</h2><button class="icon-button" id="close-setup" aria-label="Close connection guide">×</button></div><p>The sample walkthrough works immediately. To analyze your own files:</p><ol><li>Open <code>.env</code> in the project folder. If missing, copy <code>.env.example</code> to <code>.env</code>.</li><li>Add your API key after <code id="setup-key-name">OPENAI_API_KEY=</code> and save.</li><li>Restart the server with <code>npm start</code>, then open the exact URL printed in your terminal.</li></ol><p>Keep your key in the local file. Do not paste it into this page or commit it to Git.</p><p class="muted" id="provider-help">Live analysis uses the OpenAI API and sends uploaded files to OpenAI. API charges apply. Set OPENAI_MODEL in .env to change the model.</p></dialog>
+</body>
+</html>

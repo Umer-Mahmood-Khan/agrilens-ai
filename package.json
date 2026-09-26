@@ -1,0 +1,9 @@
+{
+  "name": "agrilens-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Evidence-backed wheat intelligence from crop photos and soil reports",
+  "scripts": { "start": "node server.mjs", "dev": "node --watch server.mjs", "test": "node --test", "check:ai": "node scripts/diagnose-ai.mjs", "check:workflow": "node scripts/smoke-ai.mjs" },
+  "engines": { "node": ">=22" }
+}
