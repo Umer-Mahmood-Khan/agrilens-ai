@@ -48,6 +48,10 @@
               </div>
               <div class="file-actions"><button type="button" id="clear-photo" class="text-button" hidden>Remove photo</button><button type="button" id="clear-report" class="text-button" hidden>Remove report</button></div>
               <label>What have you noticed? <span class="optional">optional</span><textarea id="notes" rows="2" maxlength="2000" placeholder="Tell us about symptoms, recent rain, or changes in the field…"></textarea></label>
+              <div id="visitor-key" hidden>
+                <div class="form-grid"><label>AI provider<select id="visitor-provider"><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option></select></label><label>Your API key<input id="visitor-api-key" type="password" maxlength="300" autocomplete="off" spellcheck="false" placeholder="Paste your key"></label></div>
+                <p class="key-note" id="key-note">Your key is sent with each analysis, used only to call your provider, and never saved. It stays in this tab until you close or refresh it. Usage is billed to your account.</p>
+              </div>
             </fieldset>
             <button type="submit" class="button primary full" id="analyze-button">Analyze my field <span aria-hidden="true">↗</span></button>
             <p class="privacy-note" id="privacy-note">Live analysis sends your files to your configured AI provider. Uploads are not saved to disk.</p>

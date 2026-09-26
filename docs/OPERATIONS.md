@@ -56,6 +56,7 @@ Use a clear, close photo and a short legible report for the first run. The app c
 | `DATASETS.md` | Larger dataset shortlist, geographic fit and import requirements |
 | `lib/ai.mjs` | Provider selection, Gemini/OpenAI HTTP requests, response validation and API errors |
 | `lib/errors.mjs` | User-facing application errors |
+| `lib/limits.mjs` | Visitor IP and in-memory usage limits |
 | `lib/schemas.mjs` | Strict JSON schemas and response validation |
 | `lib/knowledge.mjs` | 14 scoped editorial reference cards and lexical retrieval |
 | `lib/sample.mjs` | Explicitly fictional demonstration data |
@@ -66,13 +67,13 @@ OpenAI reads the photo and report; it no longer drafts or reviews recommendation
 
 ## Data handling and limits
 
-- Binds to `127.0.0.1` by default, checks Host and same-origin requests, and does not enable CORS. `HOST`, `ALLOWED_HOSTS` and `LIVE_ANALYSIS=off` enable a public sample-only demo (see the README's deploy section); it is still not a multi-user service with accounts or per-visitor limits.
+- Binds to `127.0.0.1` by default, checks Host and same-origin requests, and does not enable CORS. `HOST`, `ALLOWED_HOSTS` and `LIVE_ANALYSIS=off` enable a public sample-only demo. `LIVE_ANALYSIS=visitor` lets public visitors analyze with their own API key; server keys are then ignored, and visitor keys are used per request and never stored or logged (see the README's deploy section). `LIVE_LIMIT_PER_HOUR` limits new analyses per visitor IP; limits are in memory and reset on restart.
 - No API key is sent to the browser. The `.env` file is ignored by Git and never served.
 - In live mode, uploads and notes go to the selected provider: Google for Gemini, OpenAI for OpenAI. Gemini requests send image/PDF bytes inline and the key in an HTTPS header, never a URL. Google says free-tier content may be used to improve its products; use non-sensitive demo reports. OpenAI requests set `store: false`. Neither approach is a claim of zero provider retention; provider policies still apply.
 - Uploaded bytes are not persisted. Extracted findings/context, request hashes and validated stage results remain in process memory for 30 minutes after the last request and expire on access, with a maximum of 100 sessions and 12 cached stage results per session. Restart clears the sessions; keep the browser page open to retain its resume ID. No permanent analysis history is implemented.
 - The reference library contains 14 short editorial cards from FAO, US extension, ISRIC and Punjab sources. It is not regionally validated for Pakistan and does not prescribe fertilizer/pesticide doses or irrigation quantities.
 - Model output remains uncertain. No calibrated confidence scores or confirmed disease diagnoses are displayed.
-- Weather integration, user accounts, permanent storage, trained disease classifiers, and live analysis for unauthenticated public visitors are outside this MVP.
+- Weather integration, user accounts, permanent storage, trained disease classifiers, and individual user accounts are outside this MVP.
 
 ## Verify
 

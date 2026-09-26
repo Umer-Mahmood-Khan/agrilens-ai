@@ -1,7 +1,7 @@
-# Render Blueprint: public sample-only demo.
+# Render Blueprint: public demo where visitors use their own API keys.
 # Render sets PORT and RENDER_EXTERNAL_HOSTNAME automatically.
-# To enable live analysis, set LIVE_ANALYSIS=on and OPENAI_API_KEY in the
-# dashboard — but anyone with the URL could then spend your API quota.
+# Do not add OPENAI_API_KEY or GEMINI_API_KEY here: in visitor mode the server
+# never uses its own keys. Set LIVE_ANALYSIS to "off" for a sample-only demo.
 services:
   - type: web
     name: agrilens-ai
@@ -10,8 +10,10 @@ services:
     healthCheckPath: /healthz
     envVars:
       - key: LIVE_ANALYSIS
-        value: "off"
+        value: visitor
       - key: AI_PROVIDER
         value: openai
-      - key: OPENAI_API_KEY
-        sync: false
+      - key: LIVE_LIMIT_PER_HOUR
+        value: "10"
+      - key: TRUST_PROXY
+        value: "1"

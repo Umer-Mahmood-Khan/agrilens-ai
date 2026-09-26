@@ -36,10 +36,14 @@ function clearResults() {
   $('strip-review').classList.remove('current'); $('strip-plan').classList.remove('current');
   resetStages();
 }
+function providerLabel() {
+  if (!state.config?.visitorKey) return state.config?.providerLabel || 'your configured AI provider';
+  return $('visitor-provider').value === 'gemini' ? 'Google Gemini' : 'OpenAI';
+}
 function updatePrivacyNote() {
   $('privacy-note').textContent = state.mode === 'sample'
     ? 'A fictional wheat scenario. Your selected files are not used or uploaded.'
-    : `Live analysis sends your files to ${state.config?.providerLabel || 'your configured AI provider'}. Uploads are not saved to disk.${state.config?.provider === 'gemini' ? ' Free-tier content may be used to improve Google products; use non-sensitive demo reports.' : ''}`;
+    : `Live analysis sends your files to ${providerLabel()}. Uploads are not saved to disk.${providerLabel() === 'Google Gemini' ? ' Free-tier content may be used to improve Google products; use non-sensitive demo reports.' : ''}`;
 }
 function mode(value) {
   if (state.busy) return;
@@ -52,7 +56,9 @@ function mode(value) {
 }
 async function receive(path, data) {
   state.controller = new AbortController();
-  const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), signal: state.controller.signal });
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.mode === 'live' && state.config?.visitorKey) { headers['X-AI-Provider'] = $('visitor-provider').value; headers['X-API-Key'] = $('visitor-api-key').value.trim(); }
+  const response = await fetch(path, { method: 'POST', headers, body: JSON.stringify(data), signal: state.controller.signal });
   if (!response.ok) { const body = await response.json(); throw Object.assign(new Error(body.error || 'Request failed.'), { status: response.status }); }
   const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let final = null;
   function processLine(line) {
@@ -79,6 +85,7 @@ async function receive(path, data) {
   return final;
 }
 function onFailure(e) {
+  if (e.status === 401 && state.config?.visitorKey) setTimeout(() => $('visitor-api-key').focus());
   if ([409, 410].includes(e.status)) { clearResults(); }
   const resumable = Boolean(state.resumeId || state.analysis);
   const detail = e.name === 'AbortError' ? 'Analysis cancelled.' : e instanceof TypeError ? 'The connection was interrupted.' : e.message;
@@ -95,6 +102,7 @@ async function runAnalysis() {
   if (state.mode === 'live') {
     if (state.config?.liveEnabled === false) { error('Live analysis is turned off on this public demo. Choose Explore a sample, or run AgriLens locally with your own API key.'); return; }
     if (!state.config?.liveAvailable) { $('setup-dialog').showModal(); return; }
+    if (state.config.visitorKey && !$('visitor-api-key').value.trim()) { error('Enter your own API key to analyze your field, or explore the sample walkthrough.'); $('visitor-api-key').focus(); return; }
     if (!state.photo) { error('Choose a crop photo to start, or explore the sample walkthrough.'); return; }
   }
   if (!state.resumeId) clearResults();
@@ -223,6 +231,7 @@ for (const kind of ['photo', 'report']) {
   zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('dragging'); if (e.dataTransfer.files.length !== 1) { error('Drop one file at a time.'); return; } selectFile(kind, e.dataTransfer.files[0]); });
 }
+$('visitor-provider').addEventListener('change', updatePrivacyNote);
 for (const id of ['stage', 'location', 'notes']) $(id).addEventListener('input', () => { if (state.analysis || state.resumeId) clearResults(); });
 async function init() {
   const results = await Promise.allSettled([fetch('/api/config').then(r => { if (!r.ok) throw new Error(); return r.json(); }), fetch('/api/knowledge').then(r => { if (!r.ok) throw new Error(); return r.json(); })]);
@@ -237,6 +246,15 @@ async function init() {
       : 'Live analysis uses the OpenAI API and sends uploaded files to OpenAI. API charges apply. Set OPENAI_MODEL in .env to change the model.';
     updatePrivacyNote();
     $('setup-banner').hidden = state.config.liveAvailable;
+    $('visitor-key').hidden = !state.config.visitorKey;
+    if (state.config.visitorKey) {
+      $('visitor-provider').value = state.config.provider;
+      $('connection').innerHTML = '<i></i> Public demo · use your own API key';
+      $('connection').title = 'Live analysis runs on the visitor\'s own API key. This server provides no key.';
+      $('setup-banner').hidden = false;
+      $('setup-banner').querySelector('span').innerHTML = '<strong>This is a public demo.</strong> Explore the sample, or enter your own OpenAI or Gemini API key to analyze your field.';
+      $('setup-button').hidden = true;
+    }
     if (state.config.liveEnabled === false) {
       $('connection').innerHTML = '<i></i> Public demo · sample mode';
       $('connection').title = 'Live AI analysis is disabled on this deployment.';

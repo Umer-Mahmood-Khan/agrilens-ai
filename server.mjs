@@ -5,22 +5,43 @@ import { randomUUID, createHash } from 'node:crypto';
 import { analyze, generatePlan, AppError } from './lib/pipeline.mjs';
 import { knowledge } from './lib/knowledge.mjs';
 import { aiConfig, requireKey } from './lib/ai.mjs';
+import { createLimiter, clientIp, minutes } from './lib/limits.mjs';
 try { process.loadEnvFile(fileURLToPath(new URL('.env', import.meta.url))); } catch (e) { if (e.code !== 'ENOENT') throw e; }
 const publicFiles = new Map([['/', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/soil.mjs', ['soil.mjs', 'text/javascript']], ['/styles.css', ['styles.css', 'text/css']], ['/refinement.css', ['refinement.css', 'text/css']], ['/favicon.svg', ['favicon.svg', 'image/svg+xml']]]);
 const MAX_BODY = 23 * 1024 * 1024;
 const TTL = 30 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
 const list = value => (value || '').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
 // Deployment settings. Defaults keep the original local-only behavior; a public
 // host must be listed in ALLOWED_HOSTS (Render's hostname is added automatically).
+// off: sample only. server: use the key in .env (local use). visitor: each
+// visitor enters their own key; keys in the server environment are never used.
+function parseLiveMode(value = '') {
+  value = value.trim().toLowerCase();
+  if (/^(0|false|off|no|disabled)$/.test(value)) return 'off';
+  return value === 'visitor' ? 'visitor' : 'server';
+}
+const KEY_PATTERN = /^[\x21-\x7e]{10,300}$/;
+function visitorKeyOptions(req, options) {
+  const provider = String(req.headers['x-ai-provider'] || 'openai').toLowerCase();
+  if (!['openai', 'gemini'].includes(provider)) throw new AppError('Choose OpenAI or Google Gemini.');
+  const key = String(req.headers['x-api-key'] || '').trim();
+  if (key && !KEY_PATTERN.test(key)) throw new AppError('That does not look like an API key. Paste the whole key without spaces.', 401);
+  return { ...options, provider, key, visitorKey: true };
+}
 export function serverConfig(options = {}, env = process.env) {
   return {
     allowedHosts: new Set(options.allowedHosts ?? ['localhost', '127.0.0.1', ...list(env.ALLOWED_HOSTS), ...list(env.RENDER_EXTERNAL_HOSTNAME)]),
-    liveEnabled: options.liveEnabled ?? !/^(0|false|off|no|disabled)$/i.test((env.LIVE_ANALYSIS || '').trim()),
-    maxActive: options.maxActive ?? (Number(env.MAX_CONCURRENT) || 3)
+    liveMode: options.liveMode ?? parseLiveMode(env.LIVE_ANALYSIS),
+    maxActive: options.maxActive ?? (Number(env.MAX_CONCURRENT) || 3),
+    // New live analyses per visitor IP per hour; 0 = unlimited. Resumes do not count.
+    livePerHour: options.livePerHour ?? (Number(env.LIVE_LIMIT_PER_HOUR) || 0),
+    trustProxy: options.trustProxy ?? (Number(env.TRUST_PROXY) || 0)
   };
 }
 export function createServer(options = {}) {
-  const { allowedHosts, liveEnabled, maxActive } = serverConfig(options);
+  const { allowedHosts, liveMode, maxActive, livePerHour, trustProxy } = serverConfig(options);
+  const visitorLimit = createLimiter(livePerHour, HOUR, options.now);
   const sessions = new Map();
   let active = 0;
   return http.createServer(async (req, res) => {
@@ -46,7 +67,10 @@ export function createServer(options = {}) {
       if (!allowedHosts.has(host)) throw new AppError('Invalid host.', 403);
       if (req.method === 'GET' && url.pathname === '/api/config') {
         const config = aiConfig(options);
-        return json(200, { liveEnabled, liveAvailable: liveEnabled && Boolean(config.key), provider: config.provider, providerLabel: config.label, keyEnv: config.keyEnv, model: config.model, sources: knowledge.length });
+        const visitor = liveMode === 'visitor';
+        // In visitor mode, never reveal whether the server environment holds a key.
+        return json(200, { liveEnabled: liveMode !== 'off', visitorKey: visitor, liveAvailable: visitor || (liveMode === 'server' && Boolean(config.key)), provider: config.provider, providerLabel: config.label, keyEnv: config.keyEnv, model: config.model,
+          models: visitor ? { openai: aiConfig({ provider: 'openai', key: '' }).model, gemini: aiConfig({ provider: 'gemini', key: '' }).model } : undefined, sources: knowledge.length });
       }
       if (req.method === 'GET' && url.pathname === '/api/knowledge') return json(200, knowledge);
       if (req.method === 'GET' && publicFiles.has(url.pathname)) {
@@ -67,13 +91,15 @@ export function createServer(options = {}) {
       try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new AppError('The request could not be read.'); }
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw new AppError('Invalid request.');
       for (const [id, session] of sessions) if (!session.running && session.expires < Date.now()) sessions.delete(id);
-      const runOptions = { ...options, signal: abort.signal };
+      let runOptions = { ...options, signal: abort.signal };
       heartbeat = setInterval(() => { if (streaming) emit({ type: 'heartbeat' }); }, 10000);
       heartbeat.unref();
       if (url.pathname === '/api/analyze') {
         if (body.mode === 'live') {
-          if (!liveEnabled) throw new AppError('Live analysis is turned off on this public demo. Try the sample walkthrough, or run AgriLens locally with your own API key.', 403);
-          requireKey(options);
+          if (liveMode === 'off') throw new AppError('Live analysis is turned off on this public demo. Try the sample walkthrough, or run AgriLens locally with your own API key.', 403);
+          // The visitor's key is used for this request only; it is never stored or logged.
+          if (liveMode === 'visitor') runOptions = visitorKeyOptions(req, runOptions);
+          requireKey(runOptions);
         }
         const fingerprint = createHash('sha256').update(JSON.stringify({ mode: body.mode, context: body.context, photo: body.photo, report: body.report })).digest('hex');
         const id = body.id || randomUUID();
@@ -81,6 +107,13 @@ export function createServer(options = {}) {
         if (body.id && !session) throw new AppError('This analysis expired. Start a new analysis.', 410);
         if (session && session.fingerprint !== fingerprint) throw new AppError('The inputs changed. Start a new analysis.', 409);
         if (session?.running) throw new AppError('This analysis is still finishing. Wait a moment before retrying.', 429);
+        if (!session && body.mode === 'live') {
+          // Only new live analyses count; resuming an existing one does not.
+          const ip = clientIp(req, trustProxy);
+          const wait = visitorLimit.wait(ip);
+          if (wait) throw new AppError(`You have reached the live-analysis limit for now. Try again in ${minutes(wait)}, or use the sample walkthrough.`, 429);
+          visitorLimit.record(ip);
+        }
         if (!session) {
           if (sessions.size >= 100) {
             const old = [...sessions].find(([, s]) => !s.running);
@@ -120,10 +153,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(
   const port = Number(process.env.PORT || 3001);
   const bind = process.env.HOST || '127.0.0.1';
   const config = aiConfig();
-  const { liveEnabled } = serverConfig();
+  const { liveMode, allowedHosts } = serverConfig();
+  const exposed = !['127.0.0.1', 'localhost', '::1'].includes(bind) || allowedHosts.size > 2;
+  if (liveMode === 'server' && config.key && exposed) {
+    console.warn('Warning: live analysis uses the API key in .env and is publicly reachable. Anyone with the URL can spend your quota. Set LIVE_ANALYSIS=visitor or off.');
+  }
   const server = createServer();
   const shown = ['0.0.0.0', '::'].includes(bind) ? '127.0.0.1' : bind;
-  server.listen(port, bind, () => console.log(`AgriLens AI is running at http://${shown}:${port}${shown !== bind ? ` (listening on ${bind})` : ''}\nLive AI: ${!liveEnabled ? 'disabled by LIVE_ANALYSIS; sample mode only' : `${config.label} (${config.model}) — ${config.key ? 'key configured; API access is checked on analysis' : `add ${config.keyEnv} to .env; sample mode is ready`}`}`));
+  server.listen(port, bind, () => console.log(`AgriLens AI is running at http://${shown}:${port}${shown !== bind ? ` (listening on ${bind})` : ''}\nLive AI: ${liveMode === 'off' ? 'disabled by LIVE_ANALYSIS; sample mode only' : liveMode === 'visitor' ? 'visitors enter their own API keys; server keys are never used' : `${config.label} (${config.model}) — ${config.key ? 'key configured; API access is checked on analysis' : `add ${config.keyEnv} to .env; sample mode is ready`}`}`));
   server.on('error', e => { console.error(e.code === 'EADDRINUSE' ? `Port ${port} is in use. Set PORT in .env to another port.` : 'Could not start the local server.'); process.exitCode = 1; });
   // Container platforms send SIGTERM on redeploy; finish open responses, then exit.
   for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => {
