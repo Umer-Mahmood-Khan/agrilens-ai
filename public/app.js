@@ -93,6 +93,7 @@ async function runAnalysis() {
   if (state.busy) return;
   error('');
   if (state.mode === 'live') {
+    if (state.config?.liveEnabled === false) { error('Live analysis is turned off on this public demo. Choose Explore a sample, or run AgriLens locally with your own API key.'); return; }
     if (!state.config?.liveAvailable) { $('setup-dialog').showModal(); return; }
     if (!state.photo) { error('Choose a crop photo to start, or explore the sample walkthrough.'); return; }
   }
@@ -236,6 +237,13 @@ async function init() {
       : 'Live analysis uses the OpenAI API and sends uploaded files to OpenAI. API charges apply. Set OPENAI_MODEL in .env to change the model.';
     updatePrivacyNote();
     $('setup-banner').hidden = state.config.liveAvailable;
+    if (state.config.liveEnabled === false) {
+      $('connection').innerHTML = '<i></i> Public demo · sample mode';
+      $('connection').title = 'Live AI analysis is disabled on this deployment.';
+      $('setup-banner').querySelector('span').innerHTML = '<strong>This is a public demo.</strong> Explore the sample walkthrough. To analyze your own files, run AgriLens locally with your API key.';
+      $('setup-button').hidden = true;
+      mode('sample');
+    }
   } else { $('connection').textContent = 'Server unavailable'; error('Could not connect to the server. Restart it and refresh this page.'); }
   if (results[1].status === 'fulfilled') { $('library-count').textContent = results[1].value.length + ' reference cards'; $('library-content').innerHTML = results[1].value.map(s => sourceHtml(s).replace(`id="source-${s.id}"`, `id="library-${s.id}"`)).join(''); }
   else $('library-content').textContent = 'The reference library could not be loaded. Refresh to retry.';

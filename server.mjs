@@ -9,7 +9,18 @@ try { process.loadEnvFile(fileURLToPath(new URL('.env', import.meta.url))); } ca
 const publicFiles = new Map([['/', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/soil.mjs', ['soil.mjs', 'text/javascript']], ['/styles.css', ['styles.css', 'text/css']], ['/refinement.css', ['refinement.css', 'text/css']], ['/favicon.svg', ['favicon.svg', 'image/svg+xml']]]);
 const MAX_BODY = 23 * 1024 * 1024;
 const TTL = 30 * 60 * 1000;
+const list = value => (value || '').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+// Deployment settings. Defaults keep the original local-only behavior; a public
+// host must be listed in ALLOWED_HOSTS (Render's hostname is added automatically).
+export function serverConfig(options = {}, env = process.env) {
+  return {
+    allowedHosts: new Set(options.allowedHosts ?? ['localhost', '127.0.0.1', ...list(env.ALLOWED_HOSTS), ...list(env.RENDER_EXTERNAL_HOSTNAME)]),
+    liveEnabled: options.liveEnabled ?? !/^(0|false|off|no|disabled)$/i.test((env.LIVE_ANALYSIS || '').trim()),
+    maxActive: options.maxActive ?? (Number(env.MAX_CONCURRENT) || 3)
+  };
+}
 export function createServer(options = {}) {
+  const { allowedHosts, liveEnabled, maxActive } = serverConfig(options);
   const sessions = new Map();
   let active = 0;
   return http.createServer(async (req, res) => {
@@ -29,11 +40,13 @@ export function createServer(options = {}) {
       res.write(JSON.stringify(event) + '\n');
     };
     try {
-      const host = (req.headers.host || '').split(':')[0];
-      if (!['localhost', '127.0.0.1'].includes(host)) throw new AppError('Invalid host.', 403);
+      // Platform health checks may use an internal hostname, so answer before the Host check.
+      if (req.method === 'GET' && url.pathname === '/healthz') return json(200, { ok: true });
+      const host = (req.headers.host || '').split(':')[0].toLowerCase();
+      if (!allowedHosts.has(host)) throw new AppError('Invalid host.', 403);
       if (req.method === 'GET' && url.pathname === '/api/config') {
         const config = aiConfig(options);
-        return json(200, { liveAvailable: Boolean(config.key), provider: config.provider, providerLabel: config.label, keyEnv: config.keyEnv, model: config.model, sources: knowledge.length });
+        return json(200, { liveEnabled, liveAvailable: liveEnabled && Boolean(config.key), provider: config.provider, providerLabel: config.label, keyEnv: config.keyEnv, model: config.model, sources: knowledge.length });
       }
       if (req.method === 'GET' && url.pathname === '/api/knowledge') return json(200, knowledge);
       if (req.method === 'GET' && publicFiles.has(url.pathname)) {
@@ -42,10 +55,11 @@ export function createServer(options = {}) {
         res.writeHead(200, { 'Content-Type': `${mime}; charset=utf-8` }); return res.end(data);
       }
       if (req.method !== 'POST' || !['/api/analyze', '/api/plan'].includes(url.pathname)) return json(404, { error: 'Not found.' });
-      if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) throw new AppError('Only same-origin requests are accepted.', 403);
+      // Behind an HTTPS proxy the browser origin is https:// while the server sees plain HTTP.
+      if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) throw new AppError('Only same-origin requests are accepted.', 403);
       if (!req.headers['content-type']?.startsWith('application/json')) throw new AppError('Send application/json.', 415);
       if (Number(req.headers['content-length']) > MAX_BODY) throw new AppError('Files are too large. Maximum 8 MB per file.', 413);
-      if (active >= 3) throw new AppError('The app is busy. Please wait for the current analysis.', 429);
+      if (active >= maxActive) throw new AppError('The app is busy. Please wait for the current analysis.', 429);
       active++; acquired = true;
       let size = 0; const chunks = [];
       for await (const chunk of req) { size += chunk.length; if (size > MAX_BODY) throw new AppError('Files are too large.', 413); chunks.push(chunk); }
@@ -57,7 +71,10 @@ export function createServer(options = {}) {
       heartbeat = setInterval(() => { if (streaming) emit({ type: 'heartbeat' }); }, 10000);
       heartbeat.unref();
       if (url.pathname === '/api/analyze') {
-        if (body.mode === 'live') requireKey(options);
+        if (body.mode === 'live') {
+          if (!liveEnabled) throw new AppError('Live analysis is turned off on this public demo. Try the sample walkthrough, or run AgriLens locally with your own API key.', 403);
+          requireKey(options);
+        }
         const fingerprint = createHash('sha256').update(JSON.stringify({ mode: body.mode, context: body.context, photo: body.photo, report: body.report })).digest('hex');
         const id = body.id || randomUUID();
         let session = sessions.get(id);
@@ -101,8 +118,17 @@ export function createServer(options = {}) {
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(`file:///${process.argv[1].replaceAll('\\', '/')}`))) {
   const port = Number(process.env.PORT || 3001);
+  const bind = process.env.HOST || '127.0.0.1';
   const config = aiConfig();
+  const { liveEnabled } = serverConfig();
   const server = createServer();
-  server.listen(port, '127.0.0.1', () => console.log(`AgriLens AI is running at http://127.0.0.1:${port}\nLive AI: ${config.label} (${config.model}) — ${config.key ? 'key configured; API access is checked on analysis' : `add ${config.keyEnv} to .env; sample mode is ready`}`));
+  const shown = ['0.0.0.0', '::'].includes(bind) ? '127.0.0.1' : bind;
+  server.listen(port, bind, () => console.log(`AgriLens AI is running at http://${shown}:${port}${shown !== bind ? ` (listening on ${bind})` : ''}\nLive AI: ${!liveEnabled ? 'disabled by LIVE_ANALYSIS; sample mode only' : `${config.label} (${config.model}) — ${config.key ? 'key configured; API access is checked on analysis' : `add ${config.keyEnv} to .env; sample mode is ready`}`}`));
   server.on('error', e => { console.error(e.code === 'EADDRINUSE' ? `Port ${port} is in use. Set PORT in .env to another port.` : 'Could not start the local server.'); process.exitCode = 1; });
+  // Container platforms send SIGTERM on redeploy; finish open responses, then exit.
+  for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => {
+    server.close(() => process.exit(0));
+    server.closeIdleConnections();
+    setTimeout(() => process.exit(0), 10000).unref();
+  });
 }

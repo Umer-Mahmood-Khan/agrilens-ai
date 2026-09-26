@@ -1,0 +1,11 @@
+.env
+.env.*
+.git
+node_modules
+*.log
+artifacts
+test
+scripts
+sample-data
+gitimages
+docs

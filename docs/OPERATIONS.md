@@ -49,7 +49,7 @@ Use a clear, close photo and a short legible report for the first run. The app c
 
 | File | Purpose |
 | --- | --- |
-| `server.mjs` | Local HTTP server, JSON/NDJSON endpoints, ephemeral analysis sessions |
+| `server.mjs` | HTTP server, JSON/NDJSON endpoints, `/healthz`, deployment settings, ephemeral analysis sessions |
 | `lib/pipeline.mjs` | Vision, report extraction, rule matching and reference checks |
 | `lib/recommendations.mjs` | Versioned evidence-gathering recommendation rules |
 | `public/soil.mjs` | Conservative lab-rating parser and pH chart validation |
@@ -66,13 +66,13 @@ OpenAI reads the photo and report; it no longer drafts or reviews recommendation
 
 ## Data handling and limits
 
-- Binds only to `127.0.0.1`, checks Host and same-origin requests, and does not enable CORS. This is a local MVP, not a public multi-user service.
+- Binds to `127.0.0.1` by default, checks Host and same-origin requests, and does not enable CORS. `HOST`, `ALLOWED_HOSTS` and `LIVE_ANALYSIS=off` enable a public sample-only demo (see the README's deploy section); it is still not a multi-user service with accounts or per-visitor limits.
 - No API key is sent to the browser. The `.env` file is ignored by Git and never served.
 - In live mode, uploads and notes go to the selected provider: Google for Gemini, OpenAI for OpenAI. Gemini requests send image/PDF bytes inline and the key in an HTTPS header, never a URL. Google says free-tier content may be used to improve its products; use non-sensitive demo reports. OpenAI requests set `store: false`. Neither approach is a claim of zero provider retention; provider policies still apply.
 - Uploaded bytes are not persisted. Extracted findings/context, request hashes and validated stage results remain in process memory for 30 minutes after the last request and expire on access, with a maximum of 100 sessions and 12 cached stage results per session. Restart clears the sessions; keep the browser page open to retain its resume ID. No permanent analysis history is implemented.
 - The reference library contains 14 short editorial cards from FAO, US extension, ISRIC and Punjab sources. It is not regionally validated for Pakistan and does not prescribe fertilizer/pesticide doses or irrigation quantities.
 - Model output remains uncertain. No calibrated confidence scores or confirmed disease diagnoses are displayed.
-- Weather integration, user accounts, permanent storage, trained disease classifiers, and public deployment are outside this MVP.
+- Weather integration, user accounts, permanent storage, trained disease classifiers, and live analysis for unauthenticated public visitors are outside this MVP.
 
 ## Verify
 

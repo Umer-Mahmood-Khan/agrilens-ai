@@ -104,11 +104,37 @@ Restart `npm start`, choose **My field**, and upload a photo. Crop photos suppor
 
 API usage is billed by your provider. Keep real keys in `.env`, which is excluded from Git. The key stays on the server and is never sent to the browser. Gemini remains an optional adapter; see the [operations guide](docs/OPERATIONS.md).
 
+## Deploy a public demo
+
+The repository includes a `Dockerfile` and a Render Blueprint (`render.yaml`). Both deploy a **sample-only** demo by default (`LIVE_ANALYSIS=off`), so a public URL cannot spend your API quota.
+
+**Render:** push to GitHub, then in Render choose **New → Blueprint** and select the repository. Render supplies `PORT` and the public hostname automatically.
+
+**Any Docker host (Fly.io, Railway, Cloud Run, a VPS):**
+
+```bash
+docker build -t agrilens-ai .
+docker run -p 3001:3001 -e ALLOWED_HOSTS=your-domain.example -e LIVE_ANALYSIS=off agrilens-ai
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HOST` | `127.0.0.1` (`0.0.0.0` in Docker) | Interface to listen on |
+| `PORT` | `3001` | Listening port; most platforms set it |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Extra public hostnames, comma-separated. Requests with any other `Host` header are refused |
+| `LIVE_ANALYSIS` | on | Set `off` for a sample-only demo |
+| `MAX_CONCURRENT` | `3` | Simultaneous analyses before returning 429 |
+
+`GET /healthz` returns `{"ok":true}` for platform health checks. Serve the app over HTTPS (Render and most platforms do this for you).
+
+Turning live analysis on in public means anyone with the URL can upload files at your expense. There are no user accounts or per-visitor rate limits yet. Sessions live in process memory, so run a single instance.
+
 ## Project structure
 
 ```text
 agrilens-ai/
-├── server.mjs               Local HTTP server and in-memory sessions
+├── server.mjs               HTTP server, health check and in-memory sessions
+├── Dockerfile, render.yaml  Container image and Render Blueprint
 ├── lib/
 │   ├── ai.mjs               OpenAI / Gemini adapters and bounded retries
 │   ├── pipeline.mjs         Extraction, confirmation, and planning workflow
@@ -135,7 +161,7 @@ npm run check:workflow   # Live extraction + deterministic recommendation check
 
 The suite covers extraction paths, provider key isolation, missing evidence, corrected soil readings, deterministic recommendations, chart inputs, invalid references, upload validation, and retry/resume behavior. Live diagnostics use your selected provider and may incur API charges.
 
-The updated workflow has passed the 25-test offline suite and a live OpenAI check using the included public photo and synthetic soil report. These checks verify software behavior, **not agricultural treatment accuracy**.
+The updated workflow has passed the offline test suite and a live OpenAI check using the included public photo and synthetic soil report. These checks verify software behavior, **not agricultural treatment accuracy**.
 
 ## Evidence and data roadmap
 
@@ -147,7 +173,7 @@ Read the [dataset shortlist and integration criteria](DATASETS.md).
 
 ## Current scope
 
-- **Working local prototype for wheat.** No public hosted demo is included yet.
+- **Working prototype for wheat.** Deployable as a public sample-only demo; live analysis is intended for local or access-controlled use.
 - **Decision support, not diagnosis.** It does not prescribe fertilizer rates, pesticides, or irrigation quantities, or predict yield.
 - **Human confirmation matters.** AI can misread an image or report; users review soil readings before planning.
 - **No inferred soil categories.** Missing or unrecognized lab ratings stay unrated. A numeric result alone does not trigger a low/high classification.
@@ -157,11 +183,12 @@ Read the [dataset shortlist and integration criteria](DATASETS.md).
 
 Live uploads and notes are sent to the selected AI provider. Uploaded files are not saved to disk. Extracted results and resumable workflow data are held in process memory; restart clears them. Sessions expire after 30 minutes of inactivity, with cleanup on subsequent access. OpenAI requests use `store: false`; provider data policies still apply.
 
-The server currently binds to localhost and checks local request origins. Public hosting requires deployment configuration, appropriate access controls, and usage limits. Do not expose the current live API as an unrestricted public service.
+By default the server binds to localhost and accepts only local hosts and same-origin requests. Public deployments list their hostname in `ALLOWED_HOSTS` and should keep `LIVE_ANALYSIS=off` unless access controls and usage limits are in place.
 
 ## Next milestones
 
-- [ ] Public sample-only demo with deployment configuration
+- [x] Public sample-only demo with deployment configuration
+- [ ] Access control and per-visitor limits for public live analysis
 - [ ] Locally reviewed wheat recommendation rules
 - [ ] Licensed, method-aware dataset ingestion
 - [ ] Field-case evaluation with a local agronomist

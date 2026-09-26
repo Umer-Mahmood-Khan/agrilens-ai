@@ -1,0 +1,17 @@
+# Render Blueprint: public sample-only demo.
+# Render sets PORT and RENDER_EXTERNAL_HOSTNAME automatically.
+# To enable live analysis, set LIVE_ANALYSIS=on and OPENAI_API_KEY in the
+# dashboard — but anyone with the URL could then spend your API quota.
+services:
+  - type: web
+    name: agrilens-ai
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: LIVE_ANALYSIS
+        value: "off"
+      - key: AI_PROVIDER
+        value: openai
+      - key: OPENAI_API_KEY
+        sync: false
