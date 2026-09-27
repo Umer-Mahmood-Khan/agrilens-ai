@@ -32,6 +32,12 @@ test('deployment config reads hosts, live mode and limits from env', () => {
   assert.equal(serverConfig({}, {}).liveMode, 'server');
   assert.equal(serverConfig({}, { LIVE_ANALYSIS: ' Visitor ' }).liveMode, 'visitor');
   assert.equal(serverConfig({}, {}).maxActive, 3);
+  const space = serverConfig({}, { SPACE_ID: 'umer/agrilens-ai', SPACE_HOST: 'umer-agrilens-ai.hf.space' });
+  assert.equal(space.liveMode, 'visitor');
+  assert.equal(space.allowedHosts.has('umer-agrilens-ai.hf.space'), true);
+  assert.equal(space.frameAncestors, 'https://huggingface.co');
+  assert.equal(serverConfig({}, { SPACE_ID: 'x', LIVE_ANALYSIS: 'off' }).liveMode, 'off');
+  assert.equal(serverConfig({}, {}).frameAncestors, "'none'");
 });
 
 test('limiter and client address helpers', () => {

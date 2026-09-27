@@ -16,8 +16,9 @@ const list = value => (value || '').split(',').map(v => v.trim().toLowerCase()).
 // host must be listed in ALLOWED_HOSTS (Render's hostname is added automatically).
 // off: sample only. server: use the key in .env (local use). visitor: each
 // visitor enters their own key; keys in the server environment are never used.
-function parseLiveMode(value = '') {
+function parseLiveMode(value = '', fallback = 'server') {
   value = value.trim().toLowerCase();
+  if (!value) return fallback;
   if (/^(0|false|off|no|disabled)$/.test(value)) return 'off';
   return value === 'visitor' ? 'visitor' : 'server';
 }
@@ -31,8 +32,11 @@ function visitorKeyOptions(req, options) {
 }
 export function serverConfig(options = {}, env = process.env) {
   return {
-    allowedHosts: new Set(options.allowedHosts ?? ['localhost', '127.0.0.1', ...list(env.ALLOWED_HOSTS), ...list(env.RENDER_EXTERNAL_HOSTNAME)]),
-    liveMode: options.liveMode ?? parseLiveMode(env.LIVE_ANALYSIS),
+    allowedHosts: new Set(options.allowedHosts ?? ['localhost', '127.0.0.1', ...list(env.ALLOWED_HOSTS), ...list(env.RENDER_EXTERNAL_HOSTNAME), ...list(env.SPACE_HOST)]),
+    // Hugging Face Spaces (SPACE_ID is set) are public: default to visitor keys,
+    // and allow the huggingface.co Space page to frame the app.
+    liveMode: options.liveMode ?? parseLiveMode(env.LIVE_ANALYSIS, env.SPACE_ID ? 'visitor' : 'server'),
+    frameAncestors: options.frameAncestors ?? (env.SPACE_ID ? 'https://huggingface.co' : "'none'"),
     maxActive: options.maxActive ?? (Number(env.MAX_CONCURRENT) || 3),
     // New live analyses per visitor IP per hour; 0 = unlimited. Resumes do not count.
     livePerHour: options.livePerHour ?? (Number(env.LIVE_LIMIT_PER_HOUR) || 0),
@@ -40,7 +44,7 @@ export function serverConfig(options = {}, env = process.env) {
   };
 }
 export function createServer(options = {}) {
-  const { allowedHosts, liveMode, maxActive, livePerHour, trustProxy } = serverConfig(options);
+  const { allowedHosts, liveMode, frameAncestors, maxActive, livePerHour, trustProxy } = serverConfig(options);
   const visitorLimit = createLimiter(livePerHour, HOUR, options.now);
   const sessions = new Map();
   let active = 0;
@@ -48,7 +52,7 @@ export function createServer(options = {}) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', `default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors ${frameAncestors}; form-action 'self'`);
     const json = (code, data) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
     const url = new URL(req.url, 'http://localhost');
     let streaming = false, acquired = false, currentStage = null, sessionInUse = null, heartbeat;
