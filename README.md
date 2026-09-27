@@ -106,6 +106,12 @@ API usage is billed by your provider. Keep real keys in `.env`, which is exclude
 
 ## Deploy a public demo
 
+### Free static hosting (no server)
+
+`npm run build:static` writes `dist/`, a serverless copy of the app for free static hosts such as a Hugging Face **Static** Space or GitHub Pages. The pipeline runs in the visitor's browser, and live analysis calls OpenAI or Gemini directly with the visitor's own key; the key never passes through another server. The sample walkthrough needs no key.
+
+### Server hosting
+
 The repository includes a `Dockerfile` and a Render Blueprint (`render.yaml`). The Blueprint deploys with `LIVE_ANALYSIS=visitor`: anyone can explore the sample, and visitors who want to analyze their own field enter **their own** OpenAI or Gemini API key. The server never uses a key of its own, so a public URL cannot spend your quota.
 
 **Render:** push to GitHub, then in Render choose **New → Blueprint** and select the repository. Render supplies `PORT` and the public hostname automatically.

@@ -1,4 +1,8 @@
-import { labRating, phValue } from '/soil.mjs';
+import { labRating, phValue } from './soil.mjs';
+// Static build (no server): the pipeline runs in the browser and the visitor's
+// key goes straight from the browser to their AI provider.
+const STATIC = Boolean(document.querySelector('meta[name="agrilens-static"]'));
+const browserSessions = new Map();
 const $ = (id) => document.getElementById(id);
 const state = { mode: 'live', busy: false, config: null, analysis: null, result: null, controller: null, photo: null, report: null, previewUrl: null, resumeId: null };
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -54,8 +58,46 @@ function mode(value) {
   $('analyze-button').textContent = value === 'sample' ? 'Explore sample findings ↗' : 'Analyze my field ↗';
   updatePrivacyNote();
 }
+function handleEvent(event) {
+  if (event.type === 'session') state.resumeId = event.id;
+  if (event.type === 'finding' && event.stage === 'vision') {
+    $('partial-findings').hidden = false;
+    $('partial-summary').textContent = event.summary;
+    $('partial-observations').innerHTML = list(event.observations);
+  }
+  if (event.type === 'error') { if (event.stage) stage({ stage: event.stage, status: 'error', detail: 'Paused — resume to retry this stage' }); throw Object.assign(new Error(event.error), { status: event.status }); }
+  if (event.type === 'stage') stage(event);
+  return event.type === 'analysis' || event.type === 'result' ? event : null;
+}
+// Same contract as the server endpoints, run locally with an in-memory session cache.
+async function receiveInBrowser(path, data, signal) {
+  const { analyze, generatePlan } = await import('./lib/pipeline.mjs');
+  let current = null;
+  const emit = event => { if (signal.aborted) return; if (event.type === 'stage' && event.status === 'running') current = event.stage; handleEvent(event); };
+  try {
+    if (path === '/api/analyze') {
+      const id = data.id || crypto.randomUUID();
+      let session = browserSessions.get(id);
+      if (!session) browserSessions.set(id, session = { cache: new Map() });
+      emit({ type: 'session', id });
+      const options = { signal, cache: session.cache };
+      if (data.mode === 'live') Object.assign(options, { provider: $('visitor-provider').value, key: $('visitor-api-key').value.trim(), visitorKey: true });
+      session.analysis = await analyze(data, emit, options);
+      return { type: 'analysis', id, ...session.analysis };
+    }
+    const session = browserSessions.get(data.id);
+    if (!session?.analysis) throw Object.assign(new Error('This analysis expired. Start a new analysis.'), { status: 410 });
+    return { type: 'result', ...await generatePlan(session.analysis, data.readings, emit, { signal, cache: session.cache }) };
+  } catch (e) {
+    if (e.name === 'AbortError') throw e;
+    if (!e.status) console.error(e);
+    if (current) stage({ stage: current, status: 'error', detail: 'Paused — resume to retry this stage' });
+    throw Object.assign(new Error(e.status ? e.message : 'Something went wrong. Please retry the analysis.'), { status: e.status || 500 });
+  }
+}
 async function receive(path, data) {
   state.controller = new AbortController();
+  if (STATIC) return receiveInBrowser(path, data, state.controller.signal);
   const headers = { 'Content-Type': 'application/json' };
   if (state.mode === 'live' && state.config?.visitorKey) { headers['X-AI-Provider'] = $('visitor-provider').value; headers['X-API-Key'] = $('visitor-api-key').value.trim(); }
   const response = await fetch(path, { method: 'POST', headers, body: JSON.stringify(data), signal: state.controller.signal });
@@ -63,16 +105,7 @@ async function receive(path, data) {
   const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let final = null;
   function processLine(line) {
     if (!line.trim()) return;
-    const event = JSON.parse(line);
-    if (event.type === 'session') state.resumeId = event.id;
-    if (event.type === 'finding' && event.stage === 'vision') {
-      $('partial-findings').hidden = false;
-      $('partial-summary').textContent = event.summary;
-      $('partial-observations').innerHTML = list(event.observations);
-    }
-    if (event.type === 'error') { if (event.stage) stage({ stage: event.stage, status: 'error', detail: 'Paused — resume to retry this stage' }); throw Object.assign(new Error(event.error), { status: event.status }); }
-    if (event.type === 'stage') stage(event);
-    if (event.type === 'analysis' || event.type === 'result') final = event;
+    final = handleEvent(JSON.parse(line)) || final;
   }
   while (true) {
     const { value, done } = await reader.read();
@@ -89,7 +122,7 @@ function onFailure(e) {
   if ([409, 410].includes(e.status)) { clearResults(); }
   const resumable = Boolean(state.resumeId || state.analysis);
   const detail = e.name === 'AbortError' ? 'Analysis cancelled.' : e instanceof TypeError ? 'The connection was interrupted.' : e.message;
-  const message = `${detail}${resumable ? ' Keep this page open: completed stages are saved for 30 minutes while this server is running. Use Resume to retry the unfinished step.' : ''}`;
+  const message = `${detail}${resumable ? (STATIC ? ' Keep this tab open: completed stages are saved until you close or refresh it. Use Resume to retry the unfinished step.' : ' Keep this page open: completed stages are saved for 30 minutes while this server is running. Use Resume to retry the unfinished step.') : ''}`;
   if (state.resumeId) $('analyze-button').textContent = 'Resume analysis ↗';
   if (state.analysis) $('plan-button').textContent = 'Resume action plan ↗';
   error(message); $('overall-status').textContent = e.name === 'AbortError' ? 'Cancelled' : 'Needs attention';
@@ -233,8 +266,16 @@ for (const kind of ['photo', 'report']) {
 }
 $('visitor-provider').addEventListener('change', updatePrivacyNote);
 for (const id of ['stage', 'location', 'notes']) $(id).addEventListener('input', () => { if (state.analysis || state.resumeId) clearResults(); });
+async function loadConfig() {
+  if (!STATIC) return Promise.allSettled([fetch('/api/config').then(r => { if (!r.ok) throw new Error(); return r.json(); }), fetch('/api/knowledge').then(r => { if (!r.ok) throw new Error(); return r.json(); })]);
+  try {
+    const [{ knowledge }, { aiConfig }] = await Promise.all([import('./lib/knowledge.mjs'), import('./lib/ai.mjs')]);
+    const openai = aiConfig({ provider: 'openai', key: '' });
+    return [{ status: 'fulfilled', value: { liveEnabled: true, visitorKey: true, liveAvailable: true, provider: 'openai', providerLabel: 'OpenAI', keyEnv: openai.keyEnv, model: openai.model, sources: knowledge.length } }, { status: 'fulfilled', value: knowledge }];
+  } catch (e) { return [{ status: 'rejected', reason: e }, { status: 'rejected', reason: e }]; }
+}
 async function init() {
-  const results = await Promise.allSettled([fetch('/api/config').then(r => { if (!r.ok) throw new Error(); return r.json(); }), fetch('/api/knowledge').then(r => { if (!r.ok) throw new Error(); return r.json(); })]);
+  const results = await loadConfig();
   if (results[0].status === 'fulfilled') {
     state.config = results[0].value;
     $('connection').classList.toggle('live', state.config.liveAvailable);
@@ -254,6 +295,10 @@ async function init() {
       $('setup-banner').hidden = false;
       $('setup-banner').querySelector('span').innerHTML = '<strong>This is a public demo.</strong> Explore the sample, or enter your own OpenAI or Gemini API key to analyze your field.';
       $('setup-button').hidden = true;
+      if (STATIC) {
+        $('key-note').textContent = 'Your key goes straight from your browser to your provider. It never passes through another server and is never saved; closing or refreshing this tab clears it. Usage is billed to your account.';
+        $('connection').title = 'Runs entirely in your browser with your own API key.';
+      }
     }
     if (state.config.liveEnabled === false) {
       $('connection').innerHTML = '<i></i> Public demo · sample mode';
@@ -262,7 +307,7 @@ async function init() {
       $('setup-button').hidden = true;
       mode('sample');
     }
-  } else { $('connection').textContent = 'Server unavailable'; error('Could not connect to the server. Restart it and refresh this page.'); }
+  } else { $('connection').textContent = STATIC ? 'Could not load' : 'Server unavailable'; error(STATIC ? 'The app could not load. Refresh this page.' : 'Could not connect to the server. Restart it and refresh this page.'); }
   if (results[1].status === 'fulfilled') { $('library-count').textContent = results[1].value.length + ' reference cards'; $('library-content').innerHTML = results[1].value.map(s => sourceHtml(s).replace(`id="source-${s.id}"`, `id="library-${s.id}"`)).join(''); }
   else $('library-content').textContent = 'The reference library could not be loaded. Refresh to retry.';
 }
